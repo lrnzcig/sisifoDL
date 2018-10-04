@@ -62,7 +62,7 @@ class Test0(unittest.TestCase):
             find_best_architecture(train_gen, val_gen, test_gen,
                                    verbose=False, number_of_models=3, nr_epochs=5,
                                    early_stopping=False, metric=mean_absolute_percentage_error,
-                                   models=None, use_testset=True, debug=False, output_all=True,
+                                   models=None, use_testset=False, debug=False, output_all=True,
                                    seed=None, test_retrain=False,
                                    deepconvlstm_min_conv_layers=1, deepconvlstm_max_conv_layers=1,
                                    deepconvlstm_min_conv_filters=10, deepconvlstm_max_conv_filters=100,
