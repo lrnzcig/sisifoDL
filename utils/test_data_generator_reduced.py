@@ -104,6 +104,6 @@ class Test0(unittest.TestCase):
         self.assertTrue((X == X_b).all())
 
         generator_all_bis = generator_2.get_merged_generator(generator_1)
-        X_c, y_c = generator_all.get_all_batches()
+        X_c, y_c = generator_all_bis.get_all_batches()
         self.assertTrue((X == X_c).all())
 

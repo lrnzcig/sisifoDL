@@ -29,9 +29,14 @@ class DataGenerator(keras.utils.Sequence):
         self.debug = debug
         self.n_channels = data.shape[1] - 2  # excluding datetime and name
         self.datetimes = None
+        # self.all_datetimes has every datetime/name key with indexes equal to
+        # self.data indexes
         self.all_datetimes = pd.DataFrame({"datetime" : pd.to_datetime(data["datetime"]),
                                            "name" : data["name"]})
+        # self.valid_datetimes has valid datetime/name for the dataset with
+        # consecutive indexes
         self.valid_datetimes = self._get_valid_datetimes_(data)
+        self.datetimes = self.valid_datetimes
         self.total_number_of_rows = len(self.valid_datetimes)
         self.__cache_data_generation()
         self.on_epoch_end()
@@ -50,6 +55,8 @@ class DataGenerator(keras.utils.Sequence):
         output = self.all_datetimes.iloc[valid_datetime_indexes]
         if self.debug:
             print(set([(o.day, o.month) for o in output["datetime"]]))
+        output = output.sort_values(["name", "datetime"])
+        output = output.reset_index(drop=True)
         return output
 
     def __len__(self):
@@ -73,11 +80,7 @@ class DataGenerator(keras.utils.Sequence):
             datetimes = random.sample(self.valid_datetimes, self.batch_size)
         else:
             datetimes = self.datetimes.iloc[index * self.batch_size:(index + 1) * self.batch_size]
-        #print(len(self.valid_datetimes))
-        #print(len(self.datetimes))
-        #print((index + 1) * self.batch_size)
 
-        #print(datetimes)
         # Generate data
         X, y = self.__get_data_from_cache(datetimes)
 
@@ -86,38 +89,22 @@ class DataGenerator(keras.utils.Sequence):
     def on_epoch_end(self):
         'Updates indexes after each epoch'
         # Select valid dates and use step for selecting less dates
-        # (at the moment not really using it)
-        indexes =  self.all_datetimes.index[(self.all_datetimes["datetime"].isin(self.valid_datetimes["datetime"])) & \
-                                            (self.all_datetimes["name"].isin(self.valid_datetimes["name"]))]
         if self.step_prediction_dates > 1:
             raise(Exception("Not implemented yet"))
-        #print("indexes " + str(len(indexes)))
-        #print("len(valid_datetimes) " + str(len(self.valid_datetimes)))
-        #print(self.data[self.all_datetimes.duplicated()])
-        self.datetimes = self.all_datetimes.iloc[indexes]
-        self.datetimes = self.datetimes.reset_index(drop=True)
         if self.shuffle:
             np.random.shuffle(self.datetimes)
         return
 
     def __cache_data_generation(self):
-        self.X_cache = np.empty((max(self.valid_datetimes.index)+1, self.window_size, self.n_channels))
-        self.y_cache = np.empty((max(self.valid_datetimes.index)+1, self.number_of_predictions))
+        self.X_cache = np.empty((self.total_number_of_rows, self.window_size, self.n_channels))
+        self.y_cache = np.empty((self.total_number_of_rows, self.number_of_predictions))
         for i, row in self.valid_datetimes.iterrows():
-        #for i in self.valid_datetimes.index:
-            #print(i)
-            #print(self.valid_datetimes.loc[i])
-            #datetime_i = self.valid_datetimes.loc[i]
             X, y = self.__data_generation(row)
             self.X_cache[i,] = X
             self.y_cache[i,] = y
 
     def __get_data_from_cache(self, datetimes):
-        #print(datetimes["datetime"])
-        #print(datetimes["name"])
-        #print(self.valid_datetimes)
-        indexes = self.valid_datetimes[self.valid_datetimes["datetime"].isin(datetimes["datetime"]) & \
-            self.valid_datetimes["name"].isin(datetimes["name"])].index
+        indexes = datetimes.index
         X = self.X_cache[indexes]
         y = self.y_cache[indexes]
         if np.isnan(X).any() or np.isnan(y).any():
@@ -165,9 +152,7 @@ class DataGenerator(keras.utils.Sequence):
         return X, y
 
     def get_all_batches(self):
-        indexes =  self.all_datetimes.index[(self.all_datetimes["datetime"].isin(self.valid_datetimes["datetime"])) & \
-                                            (self.all_datetimes["name"].isin(self.valid_datetimes["name"]))]
-        return self.X_cache[indexes], self.y_cache[indexes]
+        return self.X_cache, self.y_cache
 
     def get_all_batches_debug(self):
         X = []
