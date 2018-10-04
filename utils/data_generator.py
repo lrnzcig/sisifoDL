@@ -40,14 +40,16 @@ class DataGenerator(keras.utils.Sequence):
     def _get_valid_datetimes_(self, data):
         valid_datetime_indexes = pd.Index([])
         for name in self.names:
-            names_indexes = data.index[data["name"] == name]
+            name_indexes = data.index[data["name"] == name]
             # remove beginning samples for allowing window_size
             # and ending samples for number_of_predictions
-            valid_datetime_indexes_name = names_indexes[self.window_size:len(names_indexes)-self.number_of_predictions]
+            valid_datetime_indexes_name = name_indexes[self.window_size:len(name_indexes)-self.number_of_predictions+1]
+            if len(valid_datetime_indexes_name) == 0:
+                raise(Exception("name " + name + " does not have enough rows"))
             valid_datetime_indexes = valid_datetime_indexes.append(valid_datetime_indexes_name)
         output = self.all_datetimes.iloc[valid_datetime_indexes]
         if self.debug:
-            print(set([(o.day, o.month) for o in output]))
+            print(set([(o.day, o.month) for o in output["datetime"]]))
         return output
 
     def __len__(self):
@@ -71,11 +73,11 @@ class DataGenerator(keras.utils.Sequence):
             datetimes = random.sample(self.valid_datetimes, self.batch_size)
         else:
             datetimes = self.datetimes.iloc[index * self.batch_size:(index + 1) * self.batch_size]
-        print(len(self.valid_datetimes))
-        print(len(self.datetimes))
-        print((index + 1) * self.batch_size)
+        #print(len(self.valid_datetimes))
+        #print(len(self.datetimes))
+        #print((index + 1) * self.batch_size)
 
-        print(datetimes)
+        #print(datetimes)
         # Generate data
         X, y = self.__get_data_from_cache(datetimes)
 
@@ -85,13 +87,13 @@ class DataGenerator(keras.utils.Sequence):
         'Updates indexes after each epoch'
         # Select valid dates and use step for selecting less dates
         # (at the moment not really using it)
-        indexes =  self.all_datetimes.index[self.all_datetimes["datetime"].isin(self.valid_datetimes["datetime"]) & \
-            self.all_datetimes["name"].isin(self.valid_datetimes["name"])]
+        indexes =  self.all_datetimes.index[(self.all_datetimes["datetime"].isin(self.valid_datetimes["datetime"])) & \
+                                            (self.all_datetimes["name"].isin(self.valid_datetimes["name"]))]
         if self.step_prediction_dates > 1:
             raise(Exception("Not implemented yet"))
-        print("indexes " + str(len(indexes)))
-        print("len(valid_datetimes) " + str(len(self.valid_datetimes)))
-        print(self.data[self.all_datetimes.duplicated()])
+        #print("indexes " + str(len(indexes)))
+        #print("len(valid_datetimes) " + str(len(self.valid_datetimes)))
+        #print(self.data[self.all_datetimes.duplicated()])
         self.datetimes = self.all_datetimes.iloc[indexes]
         self.datetimes = self.datetimes.reset_index(drop=True)
         if self.shuffle:
@@ -101,17 +103,21 @@ class DataGenerator(keras.utils.Sequence):
     def __cache_data_generation(self):
         self.X_cache = np.empty((max(self.valid_datetimes.index)+1, self.window_size, self.n_channels))
         self.y_cache = np.empty((max(self.valid_datetimes.index)+1, self.number_of_predictions))
-        for i, datetime_i in enumerate(self.valid_datetimes):
+        for i, row in self.valid_datetimes.iterrows():
         #for i in self.valid_datetimes.index:
             #print(i)
             #print(self.valid_datetimes.loc[i])
             #datetime_i = self.valid_datetimes.loc[i]
-            X, y = self.__data_generation([datetime_i], batch_size=1)
+            X, y = self.__data_generation(row)
             self.X_cache[i,] = X
             self.y_cache[i,] = y
 
     def __get_data_from_cache(self, datetimes):
-        indexes = self.valid_datetimes[self.valid_datetimes.isin(datetimes)].index
+        #print(datetimes["datetime"])
+        #print(datetimes["name"])
+        #print(self.valid_datetimes)
+        indexes = self.valid_datetimes[self.valid_datetimes["datetime"].isin(datetimes["datetime"]) & \
+            self.valid_datetimes["name"].isin(datetimes["name"])].index
         X = self.X_cache[indexes]
         y = self.y_cache[indexes]
         if np.isnan(X).any() or np.isnan(y).any():
@@ -129,38 +135,38 @@ class DataGenerator(keras.utils.Sequence):
 
         return X, y
 
-    def __data_generation(self, datetimes, batch_size=None):
-        if batch_size is None:
-            batch_size = self.batch_size
-
-        'Generates data containing batch_size samples'
+    def __data_generation(self, datetime_row):
+        'Generates data containing 1 sample'
         # Initialization
-        X = np.empty((batch_size, self.window_size, self.n_channels))
-        y = np.empty((batch_size, self.number_of_predictions))
+        X = np.empty((1, self.window_size, self.n_channels))
+        y = np.empty((1, self.number_of_predictions))
 
         # Generate data
-        for i, datetime_i in enumerate(datetimes):
-            datetime_index = self.all_datetimes[self.all_datetimes == datetime_i].index[0]
-            # Store sample
-            x_indexes = range(datetime_index - self.window_size, datetime_index)
-            X[i,] = self.data.iloc[x_indexes]
+        datetime_i = datetime_row["datetime"]
+        datetime_n = datetime_row["name"]
+        datetime_index = self.all_datetimes[(self.all_datetimes["datetime"] == datetime_i) & \
+                                            (self.all_datetimes["name"] == datetime_n)].index[0]
+        # Store sample
+        x_indexes = range(datetime_index - self.window_size, datetime_index)
+        X[0,] = self.data.iloc[x_indexes]
 
-            # Store target
-            y_indexes = range(datetime_index, datetime_index + self.number_of_predictions)
-            data_y = self.data.iloc[y_indexes]
-            y[i,] = data_y[self.target_column_name]
+        # Store target
+        y_indexes = range(datetime_index, datetime_index + self.number_of_predictions)
+        data_y = self.data.iloc[y_indexes]
+        y[0,] = data_y[self.target_column_name]
 
-            if self.debug:
-                print(datetime_i.strftime("%Y-%m-%d %H:%M:%S"))
-                print([datetime_j.strftime("%Y-%m-%d %H:%M:%S") for datetime_j in self.all_datetimes.iloc[x_indexes]])
-                print(X[i,])
-                print([datetime_j.strftime("%Y-%m-%d %H:%M:%S") for datetime_j in self.all_datetimes.iloc[y_indexes]])
-                print(data_y)
+        if self.debug:
+            print(datetime_i.strftime("%Y-%m-%d %H:%M:%S"))
+            print([datetime_j.strftime("%Y-%m-%d %H:%M:%S") for datetime_j in self.all_datetimes.iloc[x_indexes]["datetime"]])
+            print(X[0,])
+            print([datetime_j.strftime("%Y-%m-%d %H:%M:%S") for datetime_j in self.all_datetimes.iloc[y_indexes]["datetime"]])
+            print(data_y)
 
         return X, y
 
     def get_all_batches(self):
-        indexes = self.all_datetimes[self.all_datetimes.isin(self.valid_datetimes)]
+        indexes =  self.all_datetimes.index[(self.all_datetimes["datetime"].isin(self.valid_datetimes["datetime"])) & \
+                                            (self.all_datetimes["name"].isin(self.valid_datetimes["name"]))]
         return self.X_cache[indexes], self.y_cache[indexes]
 
     def get_all_batches_debug(self):

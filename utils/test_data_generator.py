@@ -4,8 +4,6 @@ import unittest
 import pandas as pd
 import numpy as np
 
-import pickle
-
 class Test0(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
@@ -40,7 +38,7 @@ class Test0(unittest.TestCase):
 
     def test_generator(self):
         filtered_by_names = self.dataset_reduced_std[self.dataset_reduced_std["name"].isin(self.names)]
-        expected_lines = len(filtered_by_names) - len(self.names) * (self.window_size + self.number_of_predictions)
+        expected_lines = len(filtered_by_names) - len(self.names) * (self.window_size + self.number_of_predictions - 1)
         expected = np.ceil(expected_lines / self.batch_size)
         # checks
         self.assertEqual(len(self.generator), expected)
@@ -62,14 +60,10 @@ class Test0(unittest.TestCase):
         X_second_last, y_second_last = self.generator.__getitem__(len(self.generator) - 2)
         self.assertEqual(X_second_last.shape, (self.batch_size, self.window_size, 2)) # 2 columns
         self.assertEqual(y_second_last.shape, (self.batch_size, self.number_of_predictions))
-        print(X_second_last)
-        print(self.dataset_reduced_std[self.dataset_reduced_std["name"] == 'h_17-04-28'][-20:])
-        print(y_second_last)
+        #print(X_second_last)
+        #print(self.dataset_reduced_std[self.dataset_reduced_std["name"] == 'h_17-04-28'][-20:])
+        #print(y_second_last)
 
-        #with open('./test_data/X0.pkl', 'wb') as f:
-        #    pickle.dump(X0, f, pickle.HIGHEST_PROTOCOL)
-        #with open('./test_data/y0.pkl', 'wb') as f:
-        #    pickle.dump(y0, f, pickle.HIGHEST_PROTOCOL)
         with open('./test_data/X_second_last.pkl', 'rb') as f:
             X_second_last_ref = pd.read_pickle(f)
         self.assertTrue((X_second_last_ref == X_second_last).all())
@@ -78,8 +72,11 @@ class Test0(unittest.TestCase):
         self.assertTrue((y_second_last_ref == y_second_last).all())
 
         X_last, y_last = self.generator.__getitem__(len(self.generator) - 1)
-        self.assertEqual(X_last.shape, (2, 30, 7))
-        self.assertEqual(y_last.shape, (2, 15))
+        self.assertEqual(X_last.shape, (3, self.window_size, 2)) # could be 2 or 1 instead of 3
+        self.assertEqual(y_last.shape, (3, self.number_of_predictions)) # could be 2 or 1 instead of 3
+        #print(X_last)
+        #print(self.dataset_reduced_std[self.dataset_reduced_std["name"] == 'h_17-04-28'][-20:])
+        #print(y_last)
 
         with open('./test_data/X_last.pkl', 'rb') as f:
             X_last_ref = pd.read_pickle(f)
@@ -92,6 +89,15 @@ class Test0(unittest.TestCase):
     def test_all_batches(self):
         X, y = self.generator.get_all_batches()
         X_b, y_b = self.generator.get_all_batches_debug()
+        print(X.shape)
+        print(y.shape)
+        print(X_b.shape)
+        print(y_b.shape)
+        print(X[2490])
+        print(X_b[2490])
+        for i in range(0, X.shape[0]):
+            print(i)
+            self.assertTrue((X[i] == X_b[i]).all())
         self.assertTrue((X == X_b).all())
         self.assertTrue((y == y_b).all())
 
