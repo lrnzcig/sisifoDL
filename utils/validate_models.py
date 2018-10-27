@@ -121,7 +121,7 @@ def train_models_on_samples(train_gen, val_gen, models,
         try:
             history.history[metric_name]
         except KeyError as e:
-            raise(Exception("Model metric does not correspond with metric name"))
+            raise(Exception("Model metric does not correspond with metric name?", e))
 
         if use_testset:
             # evaluation is done using test set
@@ -381,35 +381,29 @@ def find_best_architecture(train_gen, val_gen, test_gen,
 
 
 def get_generators(dataset_reduced_std,
-                   start_train_date,
-                   end_train_date,
-                   start_val_date,
-                   end_val_date,
-                   start_test_date,
-                   end_test_date,
+                   train_names,
+                   val_names,
+                   test_names,
                    target_variable,
                    batch_size=16,
                    number_of_predictions=15,
                    window_size=30):
     np.random.seed(1234)
-    train_gen = DataGenerator(dataset_reduced_std, start_train_date,
-                              end_train_date,
+    train_gen = DataGenerator(dataset_reduced_std, train_names,
                               target_variable, batch_size=batch_size,
                               number_of_predictions=number_of_predictions,
                               window_size=window_size,
                               step_prediction_dates=1, shuffle=True,
                               shuffle_and_sample=False, debug=False)
 
-    val_gen = DataGenerator(dataset_reduced_std, start_val_date,
-                            end_val_date,
+    val_gen = DataGenerator(dataset_reduced_std, val_names,
                             target_variable, batch_size=batch_size,
                             number_of_predictions=number_of_predictions,
                             window_size=window_size,
                             step_prediction_dates=1, shuffle=False,
                             shuffle_and_sample=False, debug=False)
 
-    test_gen = DataGenerator(dataset_reduced_std, start_test_date,
-                             end_test_date,
+    test_gen = DataGenerator(dataset_reduced_std, test_names,
                              target_variable, batch_size=batch_size,
                              number_of_predictions=number_of_predictions,
                              window_size=window_size,
@@ -417,210 +411,6 @@ def get_generators(dataset_reduced_std,
                              shuffle_and_sample=False, debug=False)
 
     return train_gen, val_gen, test_gen
-
-
-def find_best_architecture_cv(dataset_reduced_std,
-                              start_train_date, end_train_date,
-                              start_val_date, end_val_date,
-                              start_test_date, end_test_date,
-                              models, cv_fold_size,
-                              target_variable,
-                              batch_size=16,
-                              number_of_predictions=15,
-                              window_size=30,
-                              verbose=True,
-                              nr_epochs=5, early_stopping=False,
-                              model_path=None, metric=None,
-                              use_testset=True, debug=True,
-                              dir_name="./", seed=1234,
-                              test_retrain=True):
-    """
-    For the list of models, tries out the different architectures using
-    forward-chaining-cross-validation.
-    It ouputs the best architecture found, based on performance of:
-    - either testset, if use_testset=True
-    - or mean of validation folds, if use_testset=False
-
-    :param dataset_reduced_std: pandas dataframe
-        Standarized input dataframe, which includes a column called "date"
-    :param start_train_date: date
-        Start date of training dataset (fixed)
-    :param end_train_date: date
-        End date of training dataset (fixed)
-    :param start_val_date: date
-        Start date of validation dataset
-        Note that actually the validation dataset is divided into folds
-    :param end_val_date: date
-        End date of validation dataset
-        Note that actually the validation dataset is divided into folds
-    :param start_test_date: date
-        Start date of test dataset
-        It will be used for evaluation only if use_testset is True. If it
-        is not, this data is reserved and may be used as validation for
-        the choosen architecture
-    :param end_test_date:
-        End date of test dataset
-        It will be used for evaluation only if use_testset is True. If it
-        is not, this data is reserved and may be used as validation for
-        the choosen architecture
-    :param models: list of tuple (model, hyperparamets)
-        List of models to be tested
-    :param cv_fold_size: int
-        Size of validation data per fold. User of the function takes care that
-        the size of the full validation set is multiple of fold size; no extra
-        checks in the code
-    :param target_variable: str
-        Name of target variable in the input dataset
-    :param batch_size: int
-        Batch size for DataGenerators
-    :param number_of_predictions: int
-        Number of timesteps of the output prediction of the model
-    :param window_size: int
-        Size of the backwards window of the prediction
-    :param verbose: boolean, optional
-        If true, outputs messages from the model training and for the results
-    :param nr_epochs: int
-        Maximum number of epochs for training
-    :param early_stopping: boolean
-        If true, it stops early, if validation performance decreases
-    :param model_path: str
-        Obsolete
-    :param metric: function
-        Metric used as an evaluation in addition to RMSE
-    :param use_testset: boolean
-        If True, the performance for the reserved data in the test set is used
-        for choosing the best architecture. If False, the mean of performances
-        for validation folds is used for choosing the best arch.
-    :param debug: boolean
-        If True, it outputs a number of pkl files with the results. Recommended if
-        training in the cloud (robust to notebook disconnect)
-    :param dir_name: str, optional
-        Directory name for the output files if debug is set to True
-    :param seed: int, optional
-        If not None, a seed is set in a secure way
-    :return:
-        best_model_losses_index: index of best model according to losses
-        best_model_metrics_index: index of best model according to metric
-        val_losses_list: full list of results per model/folds for losses
-            2D list with number_of_folds, number_of_models
-        val_metrics_list: full list of results per model/folds for metrics
-            2D list with number_of_folds, number_of_models
-    """
-    if seed is not None:
-        set_seed_secure(True, seed)
-
-    _, val_gen, _ = \
-        get_generators(dataset_reduced_std,
-                       start_train_date,
-                       end_train_date,
-                       start_val_date,
-                       end_val_date,
-                       start_test_date,
-                       end_test_date,
-                       target_variable=target_variable,
-                       batch_size=batch_size,
-                       number_of_predictions=number_of_predictions,
-                       window_size=window_size)
-
-    val_losses_list = []
-    val_metrics_list = []
-    test_losses_list = []
-    test_metrics_list = []
-    all_dates = pd.to_datetime(dataset_reduced_std["date"])
-    number_of_folds = np.ceil(len(val_gen) * batch_size / cv_fold_size)
-    if verbose:
-        print("number_of_folds: " + str(number_of_folds))
-
-    for fold in range(0, int(number_of_folds)):
-        end_train_date_index = all_dates[all_dates == end_train_date].index[0]
-        start_val_date_index = all_dates[all_dates == start_val_date].index[0]
-        new_end_train_date = all_dates.iloc[end_train_date_index + cv_fold_size * fold]
-        new_start_val_date = all_dates.iloc[start_val_date_index + cv_fold_size * fold]
-        new_end_val_date = all_dates.iloc[start_val_date_index + cv_fold_size * (fold + 1) - 1]
-        if verbose:
-            print(new_end_train_date)
-            print(new_start_val_date)
-            print(new_end_val_date)
-        train_gen, val_gen, test_gen = \
-            get_generators(dataset_reduced_std,
-                           start_train_date,
-                           new_end_train_date,
-                           new_start_val_date,
-                           new_end_val_date,
-                           start_test_date,
-                           end_test_date,
-                           target_variable=target_variable,
-                           batch_size=batch_size,
-                           number_of_predictions=number_of_predictions,
-                           window_size=window_size)
-        x_train, y_train = train_gen.get_all_batches()
-        x_val, y_val = val_gen.get_all_batches()
-        x_test, y_test = test_gen.get_all_batches()
-        if verbose:
-            print(y_train.shape)
-            print(y_val.shape)
-            print(y_test.shape)
-
-        test_retrain_fold = False
-        last_fold = fold == int(number_of_folds) - 1
-        if use_testset and test_retrain and last_fold:
-            # take into account test results only for the last fold, since the model is retrained
-            test_retrain_fold = True
-        _, _, _, _, debug_o = \
-            find_best_architecture(train_gen, val_gen, test_gen,
-                                   verbose=verbose, number_of_models=None, nr_epochs=nr_epochs,
-                                   early_stopping=early_stopping, metric=metric,
-                                   models=models, use_testset=use_testset, model_path=model_path,
-                                   debug=debug, debug_file_suffix="fold" + str(fold),
-                                   output_all=True, dir_name=dir_name,
-                                   seed=None, test_retrain=test_retrain_fold)
-        val_losses_list += [debug_o['val_losses']]
-        val_metrics_list += [debug_o['val_metrics']]
-        if use_testset:
-            # TODO actually, only makes sense for the last fold
-            test_losses_list += [debug_o['test_losses']]
-            test_metrics_list += [debug_o['test_metrics']]
-
-    val_losses = pd.DataFrame(val_losses_list).mean(axis=0).tolist()
-    val_metrics = pd.DataFrame(val_metrics_list).mean(axis=0).tolist()
-    if verbose:
-        print(val_losses_list)
-        print(val_losses)
-        print(val_metrics_list)
-        print(val_metrics)
-        print(test_losses_list)
-        print(test_metrics_list)
-
-    if debug:
-        with open(dir_name + 'val_losses_list.pkl', 'wb') as output:
-            pickle.dump(val_losses_list, output, pickle.HIGHEST_PROTOCOL)
-        with open(dir_name + 'val_metrics_list.pkl', 'wb') as output:
-            pickle.dump(val_metrics_list, output, pickle.HIGHEST_PROTOCOL)
-        with open(dir_name + 'test_losses_list.pkl', 'wb') as output:
-            pickle.dump(test_losses_list, output, pickle.HIGHEST_PROTOCOL)
-        with open(dir_name + 'test_metrics_list.pkl', 'wb') as output:
-            pickle.dump(test_metrics_list, output, pickle.HIGHEST_PROTOCOL)
-        with open(dir_name + 'val_losses.pkl', 'wb') as output:
-            pickle.dump(val_losses, output, pickle.HIGHEST_PROTOCOL)
-        with open(dir_name + 'val_metrics.pkl', 'wb') as output:
-            pickle.dump(val_metrics, output, pickle.HIGHEST_PROTOCOL)
-
-    if use_testset:
-        test_losses = test_losses_list[-1] # last fold
-        test_metrics = test_metrics_list[-1] # last fold
-        best_model_losses_index, _, _, \
-        best_model_metrics_index, _, _ = \
-            get_best_model(test_losses, test_metrics, models, metric,
-                           verbose=verbose)
-    else:
-        best_model_losses_index, _, _, \
-        best_model_metrics_index, _, _ = \
-            get_best_model(val_losses, val_metrics, models, metric,
-                           verbose=verbose)
-
-    return best_model_losses_index, best_model_metrics_index, \
-           val_losses_list, val_metrics_list, \
-           test_losses_list, test_metrics_list
 
 
 def _evaluate_print_out(best_model_index, best_params, val_losses, val_metrics,
