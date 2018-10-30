@@ -487,92 +487,67 @@ def mape(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
-def evaluate_plot(original_series, val_predict, test_predict,
-                  end_test_date=None,
-                  plot_window=200, target_variable=None,
-                  prediction=None, y_test=None,
+def evaluate_plot(original_series, test_gen, test_predict,
+                  target_variable=None,
+                  prediction=None,
                   do_denormalize=True, do_plot=True,
                   metric=None):
     """
-    Given a list of compiled models, this function trains
-    them all on a subset of the train data. If the given size of the subset is
-    smaller then the size of the data, the complete data set is used.
+    Simple plot
 
     Parameters
     ----------
     original_series : pandas dataframe
         Reference dataframe
-    val_predict : numpy array of shape (num_samples_val, number_of_predictions)
-        Prediction for the validation dataset
+    test_gen : DataGenerator
+        DataGenerator for test
     test_predict : numpy array of shape (num_samples_test, number_of_predictions)
         Prediction for the test dataset
-    plot_window : int, optional
-        Number of samples shown in plot for training test (200 by default)
     target_variable : str, optional
         Name of target variable TODO cannot be optional
     prediction : int
         Index for prediction, i.e. index in the test_predict and y_test arrays
-    y_test : numpy array of shape (num_samples_test, number_of_predictions)
-        True value for test dataset ouput
     do_denormalize : boolean
         If True, values are denormalized using original_series
     do_plot : boolean
         If False, no plots are shown
+    metric : function
+        Either corr/mape
 
     Returns
     ----------
     rmse_test : float
         RMSE for test set
     corr_test : float
-        Correlation for test set
+        Correlation/metric for test set
     """
     # init
-    val_size = len(val_predict)
-    val_length = 0 if val_size == 0 else val_predict.shape[1]
-    test_size = len(test_predict)
-    test_length = test_predict.shape[1]
+    test_dataset = test_gen.get_all_batches()
+    X_test = test_dataset[0]
+    X_test_target = X_test[:,:,X_test.shape[2]-1] # i.e. target column of X_test, assuming it is the last
+    y_test = test_dataset[1]
 
     # plot original series
-    original_series_2plot = original_series
-    if end_test_date is not None:
-        original_series_2plot = \
-            original_series_2plot[pd.to_datetime(original_series_2plot["date"]) <= end_test_date]
-    max_series_limit = original_series_2plot.shape[0]
-    if prediction is not None and end_test_date is None:
-        max_series_limit += prediction-test_size
-    plt.plot(np.arange(max_series_limit-plot_window,
-                       max_series_limit, 1),
-             original_series_2plot[max_series_limit-plot_window:max_series_limit][target_variable],
+    original_series_2plot = np.append(X_test_target[prediction], y_test[prediction])
+    if do_denormalize:
+        y_test_dolar = de_normalize_prediction(original_series, y_test[prediction],
+                                               target_variable)
+        original_series_2plot = de_normalize_prediction(original_series, original_series_2plot,
+                                                     target_variable)
+    plt.plot(# X axis
+             original_series_2plot,
              color = 'k')
-
-    split_pt = max_series_limit - val_length - test_length
-
-    # plot validation set prediction
-    # if val_predict is an empty list it means there is no validation set
-    val_predict_2plot = val_predict
-    if val_size != 0:
-        if do_denormalize:
-            val_predict_dolar = de_normalize_prediction(original_series, val_predict[prediction],
-                                                        target_variable)
-            val_predict_2plot = val_predict_dolar
-        elif prediction is not None:
-            val_predict_2plot = val_predict[prediction]
-        plt.plot(np.arange(split_pt,
-                           split_pt + len(val_predict_2plot),1),
-                 val_predict_2plot, color = 'y')
 
     # plot test set prediction
     test_predict_2plot = test_predict
-    if do_denormalize and y_test is not None:
-        y_test_dolar = de_normalize_prediction(original_series, y_test[prediction],
-                                               target_variable)
+    if do_denormalize:
         test_predict_dolar = de_normalize_prediction(original_series, test_predict[prediction],
                                                      target_variable)
         test_predict_2plot = test_predict_dolar
     elif prediction is not None:
         test_predict_2plot = test_predict[prediction]
-    plt.plot(np.arange(split_pt + len(val_predict_2plot),
-                       split_pt + len(val_predict_2plot) + len(test_predict_2plot),1),
+    plt.plot(np.arange(len(X_test_target[prediction]),
+                       len(X_test_target[prediction]) + len(test_predict_2plot),1),
              test_predict_2plot, color = 'r')
 
     # evaluate RMSE/correlation
@@ -593,14 +568,10 @@ def evaluate_plot(original_series, val_predict, test_predict,
     title="RMSE= " + str(rmse_test) + ", " + metric.__name__ + "= " + str(corr_test)
 
     # pretty up graph
-    plt.xlabel('day')
+    plt.xlabel('time')
     plt.ylabel(target_variable)
-    if val_size != 0:
-        plt.legend(['original series', 'validation fit', 'testing fit'],
-                   loc='center left', bbox_to_anchor=(1, 0.5))
-    else:
-        plt.legend(['original series', 'testing fit'],
-                   loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.legend(['original series', 'testing fit'],
+               loc='center left', bbox_to_anchor=(1, 0.5))
 
     if title is not None:
         plt.title(title)
