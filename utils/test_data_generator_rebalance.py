@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 import numpy as np
 
-import pickle
+import random
 
 class Test0(unittest.TestCase):
 
@@ -17,15 +17,18 @@ class Test0(unittest.TestCase):
 
         # instatiate DataGenerator
         self.names = np.array(['p_17-01-19', 'p_17-01-20', 'p_17-01-25'])
-        self.batch_size = 3
+        self.batch_size = 4
         self.number_of_predictions = 2
         self.window_size = 4
+        self.rebalance_threshold = 0.8
+        random.seed(1234)
         self.generator = DataGenerator(self.dataset_reduced_std, self.names,
                                        "spo2", batch_size=self.batch_size,
                                        number_of_predictions=self.number_of_predictions,
                                        window_size=self.window_size,
                                        step_prediction_dates=1, shuffle=False,
-                                       rebalance_data=False, debug=False)
+                                       rebalance_data=True, rebalance_threshold=self.rebalance_threshold,
+                                       debug=False)
 
     def test_generator(self):
         filtered_by_names = self.dataset_reduced_std[self.dataset_reduced_std["name"].isin(self.names)]
@@ -37,73 +40,43 @@ class Test0(unittest.TestCase):
         X0, y0 = self.generator.__getitem__(0)
         self.assertEqual(X0.shape, (self.batch_size, self.window_size, 2)) # 2 columns
         self.assertEqual(y0.shape, (self.batch_size, self.number_of_predictions))
-        #print(X0)
-        #print(self.dataset_reduced_std[self.dataset_reduced_std["name"] == 'p_17-01-19'][0:20])
         #print(y0)
+        self.assertEqual(sum(np.apply_along_axis(self.generator.rebalance_select_row, 1, y0)),
+                         self.batch_size/2)
 
-        with open('./test_data/X0_reduced.pkl', 'rb') as f:
+        with open('./test_data/X0_balanced.pkl', 'rb') as f:
             X0_ref = pd.read_pickle(f)
         self.assertTrue((X0_ref == X0).all())
-        with open('./test_data/y0_reduced.pkl', 'rb') as f:
+        with open('./test_data/y0_balanced.pkl', 'rb') as f:
             y0_ref = pd.read_pickle(f)
         self.assertTrue((y0_ref == y0).all())
 
         X_second_last, y_second_last = self.generator.__getitem__(len(self.generator) - 2)
         self.assertEqual(X_second_last.shape, (self.batch_size, self.window_size, 2)) # 2 columns
         self.assertEqual(y_second_last.shape, (self.batch_size, self.number_of_predictions))
-        #print(X_second_last)
-        #print(self.dataset_reduced_std[self.dataset_reduced_std["name"] == 'p_17-01-25'][-20:-6])
         #print(y_second_last)
+        self.assertEqual(sum(np.apply_along_axis(self.generator.rebalance_select_row, 1, y_second_last)),
+                         self.batch_size/2)
 
-        with open('./test_data/X_second_last_reduced.pkl', 'rb') as f:
+        with open('./test_data/X_second_last_balanced.pkl', 'rb') as f:
             X_second_last_ref = pd.read_pickle(f)
         self.assertTrue((X_second_last_ref == X_second_last).all())
-        with open('./test_data/y_second_last_reduced.pkl', 'rb') as f:
+        with open('./test_data/y_second_last_balanced.pkl', 'rb') as f:
             y_second_last_ref = pd.read_pickle(f)
         self.assertTrue((y_second_last_ref == y_second_last).all())
 
         X_last, y_last = self.generator.__getitem__(len(self.generator) - 1)
-        self.assertEqual(X_last.shape, (3, self.window_size, 2)) # 3 could be 2, 1 depending on input file
-        self.assertEqual(y_last.shape, (3, self.number_of_predictions)) # 3 could be 2, 1 depending on input file
-        #print(X_last)
-        #print(self.dataset_reduced_std[self.dataset_reduced_std["name"] == 'p_17-01-25'][-20:])
+        self.assertEqual(X_last.shape, (self.batch_size, self.window_size, 2)) # 2 columns
+        self.assertEqual(y_last.shape, (self.batch_size, self.number_of_predictions))
         #print(y_last)
+        self.assertEqual(sum(np.apply_along_axis(self.generator.rebalance_select_row, 1, y_last)),
+                         self.batch_size/2)
 
-        with open('./test_data/X_last_reduced.pkl', 'rb') as f:
+        with open('./test_data/X_last_balanced.pkl', 'rb') as f:
             X_last_ref = pd.read_pickle(f)
         self.assertTrue((X_last_ref == X_last).all())
-        with open('./test_data/y_last_reduced.pkl', 'rb') as f:
+        with open('./test_data/y_last_balanced.pkl', 'rb') as f:
             y_last_ref = pd.read_pickle(f)
         self.assertTrue((y_last_ref == y_last).all())
 
-    def test_all_batches(self):
-        X, y = self.generator.get_all_batches()
-        X_b, y_b = self.generator.get_all_batches_debug()
-        self.assertTrue((X == X_b).all())
-        self.assertTrue((y == y_b).all())
-
-    def test_merge(self):
-        X, y = self.generator.get_all_batches()
-
-        names_1 = np.array(['p_17-01-19', 'p_17-01-20'])
-        generator_1 = DataGenerator(self.dataset_reduced_std, names_1,
-                                    "spo2", batch_size=3,
-                                    number_of_predictions=self.number_of_predictions,
-                                    window_size=self.window_size,
-                                    step_prediction_dates=1, shuffle=False,
-                                    rebalance_data=False, debug=False)
-        names_2 = np.array(['p_17-01-25'])
-        generator_2 = DataGenerator(self.dataset_reduced_std, names_2,
-                                    "spo2", batch_size=3,
-                                    number_of_predictions=self.number_of_predictions,
-                                    window_size=self.window_size,
-                                    step_prediction_dates=1, shuffle=False,
-                                    rebalance_data=False, debug=False)
-        generator_all = generator_1.get_merged_generator(generator_2)
-        X_b, y_b = generator_all.get_all_batches()
-        self.assertTrue((X == X_b).all())
-
-        generator_all_bis = generator_2.get_merged_generator(generator_1)
-        X_c, y_c = generator_all_bis.get_all_batches()
-        self.assertTrue((X == X_c).all())
 

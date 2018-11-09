@@ -25,7 +25,7 @@ class Test0(unittest.TestCase):
                                        number_of_predictions=self.number_of_predictions,
                                        window_size=self.window_size,
                                        step_prediction_dates=1, shuffle=False,
-                                       shuffle_and_sample=False, debug=False)
+                                       rebalance_data=False, debug=False)
 
     def test_generator(self):
         filtered_by_names = self.dataset_reduced_std[self.dataset_reduced_std["name"].isin(self.names)]
@@ -95,13 +95,13 @@ class Test0(unittest.TestCase):
                                     "spo2", batch_size=3,
                                     number_of_predictions=4, window_size=12,
                                     step_prediction_dates=1, shuffle=False,
-                                    shuffle_and_sample=False, debug=False)
+                                    rebalance_data=False, debug=False)
         names_2 = np.array(['p_17-04-27'])
         generator_2 = DataGenerator(self.dataset_reduced_std, names_2,
                                     "spo2", batch_size=3,
                                     number_of_predictions=4, window_size=12,
                                     step_prediction_dates=1, shuffle=False,
-                                    shuffle_and_sample=False, debug=False)
+                                    rebalance_data=False, debug=False)
         generator_all = generator_1.get_merged_generator(generator_2)
         X_b, y_b = generator_all.get_all_batches()
         self.assertTrue((X == X_b).all())

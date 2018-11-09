@@ -207,7 +207,7 @@ def find_best_architecture(train_gen, val_gen, test_gen,
                            models=None, use_testset=True,
                            debug=False, debug_file_suffix="no_cv",
                            output_all=False, dir_name = "./",
-                           seed=None, test_retrain=True,
+                           seed=1234, test_retrain=True,
                            **kwargs):
     """
     Tries out a number of models on a subsample of the data,
@@ -572,11 +572,13 @@ def evaluate_plot(original_series, test_gen, test_predict,
     plt.ylabel(target_variable)
     plt.legend(['original series', 'testing fit'],
                loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.ylim((80, 100))
 
     if title is not None:
         plt.title(title)
     if do_plot:
         plt.show()
+
 
     return rmse_test, corr_test
 

@@ -4,18 +4,18 @@ import keras
 import random
 import pickle
 
-from datetime import timedelta, datetime
-
-
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly.html
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
+    def rebalance_select_row(self, row):
+        return (row < self.rebalance_threshold).any()
 
     def __init__(self, data, names, target_column_name,
                  batch_size=32, number_of_predictions=15,
                  window_size=30, step_prediction_dates=1, shuffle=False,
-                 shuffle_and_sample=False, debug=False):
-        'Initialization'
+                 rebalance_data=False, rebalance_threshold=0.75,
+                 debug=False):
+        # init attributes
         self.data_backup = data
         self.data = data.drop(["datetime", "name"], axis=1)
         self.names = names
@@ -25,9 +25,11 @@ class DataGenerator(keras.utils.Sequence):
         self.window_size = window_size
         self.step_prediction_dates = step_prediction_dates
         self.shuffle = shuffle
-        self.shuffle_and_sample = shuffle_and_sample
+        self.rebalance_data = rebalance_data
+        self.rebalance_threshold = rebalance_threshold
         self.debug = debug
         self.n_channels = data.shape[1] - 2  # excluding datetime and name
+
         self.datetimes = None
         # self.all_datetimes has every datetime/name key with indexes equal to
         # self.data indexes
@@ -38,7 +40,16 @@ class DataGenerator(keras.utils.Sequence):
         self.valid_datetimes = self._get_valid_datetimes_(data)
         self.datetimes = self.valid_datetimes
         self.total_number_of_rows = len(self.valid_datetimes)
+
+        # data initialization
         self.__cache_data_generation()
+        if self.rebalance_data:
+            selected_rows = np.apply_along_axis(self.rebalance_select_row, 1, self.y_cache)
+            if sum(selected_rows) == 0:
+                raise(Exception("No rows below threshold " + str(self.rebalance_threshold) +
+                                ", data cannot be rebalanced."))
+            self.minority_datetimes = self.valid_datetimes[selected_rows]
+            self.majority_datetimes = self.valid_datetimes[~ selected_rows]
         self.on_epoch_end()
         self.debug_iteration = 0
 
@@ -76,8 +87,14 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         'Generate one batch of data'
         # Generate indexes of the batch
-        if self.shuffle_and_sample:
-            datetimes = random.sample(self.valid_datetimes, self.batch_size)
+        if self.rebalance_data:
+            # assumed a 50% balance -note that it means both undersampling & oversampling, this
+            # simple solution may not be optimal but hopefully it is ok after enough epochs
+            datetimes_indexes = np.append(random.sample(self.majority_datetimes.index.values.tolist(),
+                                                        int(self.batch_size/2)),
+                                          random.sample(self.minority_datetimes.index.values.tolist(),
+                                                        int(self.batch_size/2)))
+            datetimes = self.datetimes.iloc[datetimes_indexes]
         else:
             datetimes = self.datetimes.iloc[index * self.batch_size:(index + 1) * self.batch_size]
 
@@ -172,7 +189,7 @@ class DataGenerator(keras.utils.Sequence):
         return DataGenerator(self.data_backup, merged_names, self.target_column_name, batch_size=self.batch_size,
                              number_of_predictions=self.number_of_predictions, window_size=self.window_size,
                              step_prediction_dates=self.step_prediction_dates, shuffle=self.shuffle,
-                             shuffle_and_sample=self.shuffle_and_sample, debug=self.debug)
+                             rebalance_data=self.rebalance_data, debug=self.debug)
 
     def get_number_of_predictions(self):
         return self.number_of_predictions
@@ -187,3 +204,12 @@ class DataGenerator(keras.utils.Sequence):
         else:
             return data_shape[1]
 
+    def get_minority_datetimes(self):
+        if not self.rebalance_data:
+            raise(Exception("Data is not rebalanced"))
+        return self.minority_datetimes
+
+    def get_majority_datetimes(self):
+        if not self.rebalance_data:
+            raise(Exception("Data is not rebalanced"))
+        return self.majority_datetimes
