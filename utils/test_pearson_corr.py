@@ -27,13 +27,13 @@ class Test0(unittest.TestCase):
                                        number_of_predictions=self.number_of_predictions,
                                        window_size=self.window_size,
                                        step_prediction_dates=1, shuffle=False,
-                                       shuffle_and_sample=False, debug=False)
+                                       debug=False)
         self.test_gen = DataGenerator(self.dataset_reduced_std, self.test_names,
                                       "spo2", batch_size=self.batch_size,
                                       number_of_predictions=self.number_of_predictions,
                                       window_size=self.window_size,
                                       step_prediction_dates=1, shuffle=False,
-                                      shuffle_and_sample=False, debug=False)
+                                      debug=False)
 
         regularization_rate = 10 ** -4
         learning_rate = 10 ** -4

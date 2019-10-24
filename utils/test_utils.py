@@ -17,19 +17,19 @@ def __get_ref_generators__(dataset_reduced_std):
                               number_of_predictions=number_of_predictions,
                               window_size=window_size,
                               step_prediction_dates=1, shuffle=False,
-                              shuffle_and_sample=False, debug=False)
+                              rebalance_data=False, debug=False)
     val_gen = DataGenerator(dataset_reduced_std, val_names,
                             "spo2", batch_size=batch_size,
                             number_of_predictions=number_of_predictions,
                             window_size=window_size,
                             step_prediction_dates=1, shuffle=False,
-                            shuffle_and_sample=False, debug=False)
+                            rebalance_data=False, debug=False)
     test_gen = DataGenerator(dataset_reduced_std, test_names,
                              "spo2", batch_size=batch_size,
                              number_of_predictions=number_of_predictions,
                              window_size=window_size,
                              step_prediction_dates=1, shuffle=False,
-                             shuffle_and_sample=False, debug=False)
+                             rebalance_data=False, debug=False)
     return train_gen, val_gen, test_gen
 
 def __get_ref_model__(dim_length, dim_channels, output_dim):

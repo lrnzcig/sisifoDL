@@ -394,21 +394,21 @@ def get_generators(dataset_reduced_std,
                               number_of_predictions=number_of_predictions,
                               window_size=window_size,
                               step_prediction_dates=1, shuffle=True,
-                              shuffle_and_sample=False, debug=False)
+                              rebalance_data=True, debug=False)
 
     val_gen = DataGenerator(dataset_reduced_std, val_names,
                             target_variable, batch_size=batch_size,
                             number_of_predictions=number_of_predictions,
                             window_size=window_size,
                             step_prediction_dates=1, shuffle=False,
-                            shuffle_and_sample=False, debug=False)
+                            rebalance_data=True, debug=False)
 
     test_gen = DataGenerator(dataset_reduced_std, test_names,
                              target_variable, batch_size=batch_size,
                              number_of_predictions=number_of_predictions,
                              window_size=window_size,
                              step_prediction_dates=1, shuffle=False,
-                             shuffle_and_sample=False, debug=False)
+                             rebalance_data=True, debug=False)
 
     return train_gen, val_gen, test_gen
 
