@@ -11,6 +11,8 @@ class Test0(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
         super(Test0, self).__init__(*args, **kwargs)
+
+    def setUp(self):
         # read dataset
         columns = np.array(['bpm', 'spo2'])
         self.dataset_reduced_std, _ = get_dataset_pulsi(columns,

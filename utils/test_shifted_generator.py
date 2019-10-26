@@ -9,6 +9,9 @@ import unittest
 class test_shifted(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
+        unittest.TestCase.__init__(self, *args, **kwargs)
+
+    def setUp(self):
         columns = np.array(['bpm', 'spo2'])
         self.dataset_reduced_std, _ = get_dataset_pulsi(columns,
                                                         filename='./test_data/42nights_shifted.csv')
@@ -31,11 +34,11 @@ class test_shifted(unittest.TestCase):
                           rebalance_data=False,
                           debug=False)
 
-    def test_something(self):
+    def test_basic(self):
         with open("test_gen.pkl", 'wb') as output:
             pickle.dump(self.test_gen, output, pickle.HIGHEST_PROTOCOL)
 
         X, y = self.test_gen.get_all_batches()
 
-        self.assertEqual(np.isclose(X.sum(), 93417.1367913111), True)
-        self.assertEqual(np.isclose(y.sum(), 93417.1367913111), True)
+        self.assertEqual(np.isclose(X.sum(), 2238170.909015533), True)
+        self.assertEqual(np.isclose(y.sum(), 517260.953926506), True)
