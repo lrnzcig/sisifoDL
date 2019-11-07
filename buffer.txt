@@ -106,3 +106,189 @@ Con muchos datos de entrenamiento, mejora la expectativa de obtener un buen resu
 
 
 
+
+
+
+CV prophet
+==========
+#' cross-validation loop
+#' ajusta modelo con forward chaining y obtiene métricas de precisión
+#' 
+#' @param data daframe completo (train+test)
+#' @param horizon horizonte de la predicción (número de pasos)
+#' @param number_of_folds número de particiones para forward chaining
+#' @param model.funcion función que ajusta el modelo a partir de df de entrenamiento
+#' @param do.plot si a TRUE, hace plot de predicciones
+#' @param verbose si a TRUE muestra mensajes
+#' @param debug si a TRUE muestra mensajes para depuración, difíciles de entender
+#' @return dataframe con MAPEs de cada uno de los folds
+prophet.cv.loop <- function(data,
+                            horizon,
+                            number_of_folds,
+                            model.function,
+                            do.plot=TRUE,
+                            verbose=TRUE,
+                            debug=TRUE) {
+  mape_v <- c()
+  for (fold in 1:number_of_folds) {
+    # construct data_train/data_test
+    l <- nrow(data) - fold*horizon
+    if (debug) print(l)
+    data_train <- data[1:l,]
+    data_test <- data[(l+1):(l+horizon),]
+    # fit model & predict
+    model <- model.function(data_train)
+    forecast <- predict(model, rbind(data_train, data_test))
+    if (do.plot) {
+      # plot
+      plot(forecast %>%
+             select(ds, yhat), col="blue", type="l")
+      lines(data_test %>% 
+              select(ds, y), col="red", type="l")
+    }
+    # evaluation
+    errors <- data_test$y-forecast[(l+1):(l+horizon),]$yhat
+    mape <- mean(abs(errors)/data_test$y)*100
+    mape_v <- c(mape_v, mape)
+    if (verbose) print(paste0("fold ", fold, ": mape ", mape))
+  }
+  return(data.frame(mape=mape_v))
+}
+
+
+
+
+# BLUCLES CV PARA SELECCION DE PRIORS
+
+# 0. test de la función CV
+prophet.cv.loop(tb_weekly_base %>% 
+                  mutate(Fecha=as.POSIXct(Fecha)) %>%
+                  select(ds=Fecha, y=ventas_online_uds,
+                         otros_precio_medio, trafico_web_sesiones_totales),
+                horizon=13,
+                number_of_folds=1,
+                model.function=function(data_train) {
+                  m_ser <- prophet(yearly.seasonality=10,
+                                   weekly.seasonality=FALSE,
+                                   daily.seasonality=FALSE,
+                                   seasonality.prior.scale=10, #10
+                                   changepoint.prior.scale=0.05) #0.05
+                  m_ser <- add_seasonality(m_ser, name='monthly', period=30.5,
+                                           fourier.order=8, prior.scale=10) #10
+                  m_ser <- add_regressor(m_ser, 'otros_precio_medio', prior.scale=5) #5
+                  m_ser <- add_regressor(m_ser, 'trafico_web_sesiones_totales', prior.scale=5) #5
+                  m_ser <- fit.prophet(m_ser, 
+                                       train %>%
+                                         select(ds=Fecha, y=ventas_online_uds,
+                                                otros_precio_medio, trafico_web_sesiones_totales))
+                  return(m_ser)
+                },
+                do.plot=TRUE,
+                verbose=TRUE,
+                debug=TRUE)
+
+
+# 1. CV grid piors 2 variables explicativas
+res_df1 <- c()
+for (prior_scale_1 in c(0.01, 0.1, 1, 5, 10)) {
+  for (prior_scale_2 in c(0.01, 0.1, 1, 5, 10)) {
+    res <- prophet.cv.loop(tb_weekly_base %>% 
+                             mutate(Fecha=as.POSIXct(Fecha)) %>%
+                             select(ds=Fecha, y=ventas_online_uds,
+                                    otros_precio_medio, trafico_web_sesiones_totales),
+                           horizon=13,
+                           number_of_folds=1,
+                           model.function=function(data_train) {
+                             m_ser <- prophet(yearly.seasonality=10,
+                                              weekly.seasonality=FALSE,
+                                              daily.seasonality=FALSE,
+                                              seasonality.prior.scale=10, #10
+                                              changepoint.prior.scale=0.05) #0.05
+                             m_ser <- add_seasonality(m_ser, name='monthly', period=30.5,
+                                                      fourier.order=8, prior.scale=10) #10
+                             m_ser <- add_regressor(m_ser, 'otros_precio_medio', 
+                                                    prior.scale=prior_scale_1) #5
+                             m_ser <- add_regressor(m_ser, 'trafico_web_sesiones_totales', 
+                                                    prior.scale=prior_scale_2) #5
+                             m_ser <- fit.prophet(m_ser, 
+                                                  train %>%
+                                                    select(ds=Fecha, y=ventas_online_uds,
+                                                           otros_precio_medio, trafico_web_sesiones_totales))
+                             return(m_ser)
+                           },
+                           do.plot=FALSE,
+                           verbose=FALSE,
+                           debug=FALSE)
+    print(paste0("prior_scale_1: ", prior_scale_1,
+                 " / prior_scale_2: ", prior_scale_2,
+                 ": mape: ", mean(res$mape)))
+    res_row <- data.frame(prior_scale_1=prior_scale_1,
+                          prior_scale_2=prior_scale_2,
+                          mean_mape=mean(res$mape))
+    res_df1 <- rbind(res_df1, res_row)
+  }
+}
+res_df1
+res_df1[res_df1$mean_mape <= min(res_df1$mean_mape)*1.001 &
+          res_df1$mean_mape >= min(res_df1$mean_mape)*0.999,]
+
+
+# 2. CV grid piors 2 variables explicativas + seasonality
+res_df2 <- c()
+for (prior_scale_1 in c(0.01, 0.1, 1, 5, 10)) {
+  for (prior_scale_2 in c(0.01, 0.1, 1, 5, 10)) {
+    for (seasonality_prior_scale in c(0.1, 1, 5, 10, 20)) {
+      for (changepoint_prior_scale in c(0.01, 0.05, 0.1, 0.5, 1)) {
+        for (monthly_prior_scale in c(0.1, 1, 5, 10, 20)) {
+          res <- prophet.cv.loop(tb_weekly_base %>% 
+                                   mutate(Fecha=as.POSIXct(Fecha)) %>%
+                                   select(ds=Fecha, y=ventas_online_uds,
+                                          otros_precio_medio, trafico_web_sesiones_totales),
+                                 horizon=13,
+                                 number_of_folds=1,
+                                 model.function=function(data_train) {
+                                   m_ser <- prophet(yearly.seasonality=10,
+                                                    weekly.seasonality=FALSE,
+                                                    daily.seasonality=FALSE,
+                                                    seasonality.prior.scale=seasonality_prior_scale, #10
+                                                    changepoint.prior.scale=changepoint_prior_scale) #0.05
+                                   m_ser <- add_seasonality(m_ser, name='monthly', period=30.5,
+                                                            fourier.order=8, prior.scale=monthly_prior_scale) #10
+                                   m_ser <- add_regressor(m_ser, 'otros_precio_medio', 
+                                                          prior.scale=prior_scale_1) #5
+                                   m_ser <- add_regressor(m_ser, 'trafico_web_sesiones_totales', 
+                                                          prior.scale=prior_scale_2) #5
+                                   m_ser <- fit.prophet(m_ser, 
+                                                        train %>%
+                                                          select(ds=Fecha, y=ventas_online_uds,
+                                                                 otros_precio_medio, trafico_web_sesiones_totales))
+                                   return(m_ser)
+                                 },
+                                 do.plot=FALSE,
+                                 verbose=FALSE,
+                                 debug=FALSE)
+          print(paste0("prior_scale_1: ", prior_scale_1,
+                       " / prior_scale_2: ", prior_scale_2,
+                       " / seasonality_prior_scale: ", seasonality_prior_scale,
+                       " / changepoint_prior_scale: ", changepoint_prior_scale,
+                       " / monthly_prior_scale: ", monthly_prior_scale,
+                       ": mape: ", mean(res$mape)))
+          res_row <- data.frame(prior_scale_1=prior_scale_1,
+                                prior_scale_2=prior_scale_2,
+                                seasonality_prior_scale=seasonality_prior_scale,
+                                changepoint_prior_scale=changepoint_prior_scale,
+                                monthly_prior_scale=monthly_prior_scale,
+                                mean_mape=mean(res$mape))
+          res_df2 <- rbind(res_df2, res_row)
+        }
+      }
+    }
+  }
+}
+res_df2
+res_df2[res_df2$mean_mape <= min(res_df2$mean_mape)*1.001 &
+          res_df2$mean_mape >= min(res_df2$mean_mape)*0.999,]
+write.csv(res_df2, file="res_df2.csv", row.names=FALSE)
+
+
+
