@@ -487,10 +487,14 @@ def mape(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
+
 def evaluate_plot(original_series, test_gen, test_predict,
                   target_variable=None,
                   prediction=None,
-                  do_denormalize=True, do_plot=True,
+                  do_denormalize=True,
+                  ax=None,
+                  add_title=None,
+                  do_plot=True,
                   metric=None):
     """
     Simple plot
@@ -509,6 +513,9 @@ def evaluate_plot(original_series, test_gen, test_predict,
         Index for prediction, i.e. index in the test_predict and y_test arrays
     do_denormalize : boolean
         If True, values are denormalized using original_series
+    ax : subplot axis, optional
+    add_tittle: string, optional
+        if informed, adds string to the title
     do_plot : boolean
         If False, no plots are shown
     metric : function
@@ -524,8 +531,12 @@ def evaluate_plot(original_series, test_gen, test_predict,
     # init
     test_dataset = test_gen.get_all_batches()
     X_test = test_dataset[0]
-    X_test_target = X_test[:,:,X_test.shape[2]-1] # i.e. target column of X_test, assuming it is the last
+    X_test_target = X_test[:, :, X_test.shape[2] - 1]  # i.e. target column of X_test, assuming it is the last
     y_test = test_dataset[1]
+    if ax is None:
+        p = plt
+    else:
+        p = ax
 
     # plot original series
     original_series_2plot = np.append(X_test_target[prediction], y_test[prediction])
@@ -533,10 +544,10 @@ def evaluate_plot(original_series, test_gen, test_predict,
         y_test_dolar = de_normalize_prediction(original_series, y_test[prediction],
                                                target_variable)
         original_series_2plot = de_normalize_prediction(original_series, original_series_2plot,
-                                                     target_variable)
-    plt.plot(# X axis
-             original_series_2plot,
-             color = 'k')
+                                                        target_variable)
+    p.plot(  # X axis
+        original_series_2plot,
+        color='k')
 
     # plot test set prediction
     test_predict_2plot = test_predict
@@ -546,9 +557,9 @@ def evaluate_plot(original_series, test_gen, test_predict,
         test_predict_2plot = test_predict_dolar
     elif prediction is not None:
         test_predict_2plot = test_predict[prediction]
-    plt.plot(np.arange(len(X_test_target[prediction]),
-                       len(X_test_target[prediction]) + len(test_predict_2plot),1),
-             test_predict_2plot, color = 'r')
+    p.plot(np.arange(len(X_test_target[prediction]),
+                     len(X_test_target[prediction]) + len(test_predict_2plot), 1),
+           test_predict_2plot, color='r')
 
     # evaluate RMSE/correlation
     title = None
@@ -565,23 +576,36 @@ def evaluate_plot(original_series, test_gen, test_predict,
             rmse_test = np.sqrt(mean_squared_error(y_test[prediction], test_predict[prediction]))
             corr_test = metric(y_test[prediction], test_predict[prediction])
 
-    title="RMSE= " + str(rmse_test) + ", " + metric.__name__ + "= " + str(corr_test)
+    title = "RMSE= " + '{0:.2f}'.format(rmse_test) + ", " + metric.__name__ + "= " + '{0:.2f}'.format(corr_test)
 
-    # pretty up graph
-    plt.xlabel('time')
-    plt.ylabel(target_variable)
-    plt.legend(['original series', 'testing fit'],
-               loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.ylim((80, 100))
+    if ax is None:
+        simple_prettify(target_variable)
+
+    if add_title is not None:
+        title = add_title if title is None else add_title + ", " + title
 
     if title is not None:
-        plt.title(title)
-    if do_plot:
+        if ax is None:
+            p.title(title)
+        else:
+            ax.set_title(title)
+    if do_plot and (ax is None):
         plt.show()
-
 
     return rmse_test, corr_test
 
+
+def simple_prettify(target_variable, axs=None):
+    # pretty up graph
+    if axs is None:
+        plt.xlabel('time')
+        plt.ylabel(target_variable)
+        plt.legend(['original series', 'testing fit'],
+                   loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.ylim((80, 100))
+    else:
+        for ax in axs.flat:
+            ax.set(xlabel='time', ylabel=target_variable, ylim=(80, 100))
 
 def de_normalize_predictions(original_series, y_train, y_val, y_test,
                              train_predict, val_predict, test_predict,
