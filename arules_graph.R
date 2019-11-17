@@ -66,10 +66,10 @@ library(netCoin)
 
 C <- coin(msweb.adj[, value_names]) # coincidence matrix
 
-N2 <- asNodes(C2) # node data frame
-E2 <- edgeList(C2) # edge data frame
+N <- asNodes(C) # node data frame
+E <- edgeList(C) # edge data frame
 
-Net2 <- netCoin(N2,E2) # network object
+Net <- netCoin(N, E) # network object
 
-plot(Net2)
+plot(Net)
 
