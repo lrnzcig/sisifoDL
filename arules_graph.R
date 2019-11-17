@@ -1,7 +1,7 @@
 # https://archive.ics.uci.edu/ml/datasets/Anonymous+Microsoft+Web+Data
 # https://archive.ics.uci.edu/ml/machine-learning-databases/anonymous/
 
-msweb.orig <- read.csv("~/Downloads/anonymous-msweb.data",
+msweb.orig <- read.csv("../Downloads/anonymous-msweb.data",
                        header=FALSE,
                        sep=",",
                        col.names=c("V1", "V2", "V3", "V4", "V5", "V6"))
@@ -50,3 +50,26 @@ msweb.items[, l:=.(list(unique(title))), by=userId] # creates list of pages per 
 msweb.items <- msweb.items[! duplicated(userId), l] # removes duplicated lines per user and selects only the list 
 
 head(msweb.items, 3)
+
+
+# convertir a matriz de adyacencias
+msweb.adj <- data.table::dcast(msweb, as.formula("userId~title"),
+                               value.var="title", fun.aggregate=function(x) as.integer(length(x) >= 1))
+value_names <- names(msweb.adj)[names(msweb.adj) != "userId"] 
+value_names <- make.names(value_names)
+names(msweb.adj) <- c("userId", value_names)
+head(msweb.adj)
+
+
+library(netCoin)
+
+
+C <- coin(msweb.adj[, value_names]) # coincidence matrix
+
+N2 <- asNodes(C2) # node data frame
+E2 <- edgeList(C2) # edge data frame
+
+Net2 <- netCoin(N2,E2) # network object
+
+plot(Net2)
+
