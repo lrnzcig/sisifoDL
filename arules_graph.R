@@ -73,3 +73,10 @@ Net <- netCoin(N, E) # network object
 
 plot(Net)
 
+
+
+# clustering??
+length(unique(msweb$userId))
+m <- model.matrix(~., msweb %>% mutate(userId=as.factor(userId)))
+save.image()
+       
